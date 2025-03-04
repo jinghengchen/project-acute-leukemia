@@ -1,0 +1,38 @@
+---
+title: "Untitled"
+author: "Jingheng Chen, Alejandro D. Hernandez, Ann Richey"
+date: "2025-03-03"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(survival)
+
+
+```
+
+## Load data
+```{r}
+# NEED: set working directory to project-acute-leukemia
+
+data <- read_csv("./data/bmt.csv")
+```
+
+```{r pressure, echo=FALSE}
+surv_obj <- with(data, Surv(ts, deltadfs))
+surv_obj
+```
+
+```{r}
+# non-parametric
+
+# parametric
+```
+
+```{r}
+
+```
+
