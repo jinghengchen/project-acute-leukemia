@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(survival)
-
+library(survminer)
 
 ```
 
@@ -27,12 +27,21 @@ surv_obj
 ```
 
 ```{r}
-# non-parametric
+# kaplan-meier for disease-free survival
+km_1 <- survfit(surv_obj ~1, conf.type = "log-log")
 
-# parametric
+#
+ggsurvplot(km_1, data = data, conf.int = T,
+           ggtheme = theme_minimal(),
+           title = "Kaplan-Meier curve of disease-free survival", 
+           xlab = "Days", ylab = "Probability of disease-free survival")
 ```
+Median disease-free survival time is 641 days (95% CI: [418, 1279]). 
 
 ```{r}
+# summary statistics for disease-free survival
+km_1
 
+summary(km_1, time = c(100, 365, 1095))
 ```
 
