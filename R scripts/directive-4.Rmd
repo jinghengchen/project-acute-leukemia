@@ -37,6 +37,57 @@ anyNA(bmt)
 
 ```
 
+```{r}
+
+tbmt <- survival::tmerge(
+  data1 = bmt, data2 = bmt, id = id,
+  # Death
+  death = event(ts, deltas),
+  # Relapse
+  relapse = event(tdfs, deltar),  
+  # Death or relapse
+  death.relapse = event(tdfs, deltadfs),  
+  # Occurrence of aGVHD
+  post.agvhd = tdc(ta),
+  # Occurrence of platelet recovery
+  post.recovery = tdc(tp)
+  )
+
+coxfit <- coxph(Surv(tstart, tstop, death.relapse) ~ post.agvhd + cluster(id), data = tbmt)
+c(coef(coxfit), CI=confint(coxfit))
+
+```
+
+```{r}
+tbmt <- survival::tmerge(
+  data1 = bmt, data2 = bmt, id = id,
+  # Death
+  death = event(ts, deltas),
+  # Relapse
+  relapse = event(tdfs, deltar),
+  # Death or relapse
+  death.relapse = event(tdfs, deltadfs),  
+  # Occurrence of aGVHD
+  post.agvhd = tdc(ta),
+  # Occurrence of platelet recovery
+  post.recovery = tdc(tp)
+  )
+
+## Investigating acute graft-versus-host disease
+# HR of disease-free survival associated with the occurrence of aGVHD 
+coxfit <- coxph(Surv(tstart, tstop, death.relapse) ~ post.agvhd + cluster(id), data = tbmt)
+summary(coxfit)
+tidy(coxfit, conf.int = TRUE, conf.level = 0.95, exponentiate=TRUE)
+exp(c(coef(coxfit), CI=confint(coxfit)))
+
+# HR of relapse-free survival associated with the occurrence of aGVHD 
+coxfit <- coxph(Surv(tstart, tstop, relapse) ~ post.agvhd + cluster(id), data = tbmt)
+exp(c(coef(coxfit), CI=confint(coxfit)))
+
+```
+
+
+
 **End of report. Code appendix begins on the next page.**
 
 \pagebreak
