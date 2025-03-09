@@ -28,7 +28,7 @@ library(ggplot2)   # data visualization
 theme_set(theme_bw())
 
 # Load data
-bmt <- read.csv("../data/bmt.csv")
+bmt <- read.csv("../data/bmt_clean.csv")
 dim(bmt) # 137 rows, 22 columns
 names(bmt)
 
@@ -36,13 +36,6 @@ names(bmt)
 anyNA(bmt)
 
 ```
-
-```{r}
-# Create a measure of wait time in 3-month units, not days
-bmt$waittime2 <- bmt$waittime / 90
-# This is for a univariate log-rank test of a KM estimator
-```
-
 
 3. Are any of the measured baseline variables associated with differences in disease-free survival?
 
