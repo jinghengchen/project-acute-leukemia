@@ -160,7 +160,17 @@ table(bmt$fab)
 # subset the data to just include those with aGVHD
 subset_bmt <- bmt[bmt$deltaa == 1, ]
 
-# cox ph model with all baseline covariates
+# cox ph model with all baseline covariates and extracting 90% CI
+library(broom)
 cox <- coxph(Surv(tdfs, deltadfs) ~ age + male + cmv + donorage + donormale 
-             + donorcmv + waittime + hospital + mtx + disgroup + fab, data = subset_bmt)
-summary(cox)
+             + donorcmv + waittime + hospital + mtx + disgroup + fab, data = subset_bmt) %>%
+  tidy(conf.int = TRUE, conf.level = 0.9)
+
+results <- cox %>% 
+  mutate(Variable = term,
+         HR = exp(estimate),
+         HR_90CIlow = exp(conf.low), 
+         HR_90CIhigh = exp(conf.high),
+         pvalue = p.value,
+         .keep="none")
+results
