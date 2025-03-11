@@ -6,42 +6,403 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+# Clear environment
+rm(list=ls())
 
-library(tidyverse)
-library(survival)
-library(survminer)
+# setup
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, results='hide')
+
+options(knitr.kable.NA = '-', digits = 2)
+labs = knitr::all_labels()
+labs = labs[!labs %in% c("setup", "allcode")]
+
+# NEED: set working directory to project-acute-leukemia/R scripts
 
 ```
 
 ## Load data
-```{r}
-# NEED: set working directory to project-acute-leukemia
+``` {r load}
 
-data <- read_csv("./data/bmt.csv")
+# load necessary packages
+library(tidyverse)
+library(survival)
+library(survminer)
+
+# load data
+bmt <- read_csv("../data/bmt.csv")
 ```
 
-```{r pressure, echo=FALSE}
-surv_obj <- with(data, Surv(ts, deltadfs))
-surv_obj
+```{r preprocessing}
+## Modify variables
+
+# Create variable for wait time measured in 90-day units
+bmt$waittime90 <- bmt$waittime/90
+
+# Create variables for age centered at 30 years in 10 year units
+bmt$age10_centered <- (bmt$age - 30)/10
+bmt$donorage10_centered <- (bmt$donorage - 30)/10
 ```
 
+
+## Directive 1
+```{r }
+# Disease-free survival
+dfs_surv <- with(bmt, Surv(tdfs, deltadfs))
+sort(dfs_surv)
+```
 ```{r}
 # kaplan-meier for disease-free survival
-km_1 <- survfit(surv_obj ~1, conf.type = "log-log")
+km_dfs <- survfit(dfs_surv ~1, conf.type = "log-log")
 
-#
-ggsurvplot(km_1, data = data, conf.int = T,
-           ggtheme = theme_minimal(),
-           title = "Kaplan-Meier curve of disease-free survival", 
-           xlab = "Days", ylab = "Probability of disease-free survival")
+plot(km_dfs, main="Kaplan-Meier Curve of Disease-Free Survival",
+     xlab = "Days", ylab = "Probability of Disease-Free Survival")
 ```
-Median disease-free survival time is 641 days (95% CI: [418, 1279]). 
+Median disease-free survival time is 481 days (95% CI: [363, 748]). 
 
 ```{r}
-# summary statistics for disease-free survival
-km_1
+# median: 481
+km_dfs
 
-summary(km_1, time = c(100, 365, 1095))
+median <- summary(km_dfs)$table["median"]
+median_95LCL <- summary(km_dfs)$table["0.95LCL"]
+median_95UCL <- summary(km_dfs)$table["0.95UCL"]
+
+plot(km_dfs, main="Kaplan-Meier Curve of Disease-Free Survival",
+     xlab = "Days", ylab = "Probability of Disease-Free Survival")
+
+# add lines to show median
+segments(x0 = 0, x1 = median_95UCL, y0 = 0.5, y1=0.5, col = "blue", lty = 2, lwd = 1)
+segments(x0 = median, x1 = median, y0 = 0, y1=0.5, col = "blue", lty = 2, lwd = 1)
+
+
+# survival at 100, 365 
+summary(km_dfs, time = c(100, 365, 1095))
 ```
 
+## Directive 2
+
+```{r}
+library(tableone)
+
+vars = c('age', 'male', 'cmv', 'donorage', 'donormale', 'donorcmv', 'waittime', 'hospital')
+factor_vars = c('male', 'cmv', 'donormale', 'donorcmv', 'hospital')
+median_vars = c('age', 'donorage', 'waittime')
+
+table_1 <- CreateTableOne(data=bmt, vars=vars, factorVars = factor_vars)
+print(table_1, nonnormal=median_vars)
+
+table_1_disgroup <- CreateTableOne(data=bmt, vars=vars, factorVars = factor_vars, strata='disgroup')
+print(table_1_disgroup, nonnormal=median_vars)
+
+table_1_fab <- CreateTableOne(data=bmt, vars=vars, factorVars = factor_vars, strata='fab')
+print(table_1_disgroup, nonnormal=median_vars)
+
+```
+
+## Directive 3
+```{r}
+# Fit KM models from baseline variables
+model_list <- list(
+  # Initial disease status
+  disgroup = survdiff(dfs_surv ~ disgroup, bmt),
+  fab = survdiff(dfs_surv ~ fab, bmt),
+  waittime = survdiff(dfs_surv ~ waittime, bmt),
+  mtx = survdiff(dfs_surv ~ mtx, bmt),
+  hospital = survdiff(dfs_surv ~ hospital, bmt),
+  # Patient
+  age = survdiff(dfs_surv ~ age, bmt),
+  male = survdiff(dfs_surv ~ male, bmt),
+  cmv = survdiff(dfs_surv ~ cmv, bmt),
+  # Donor 
+  donorage = survdiff(dfs_surv ~ donorage, bmt),
+  donormale = survdiff(dfs_surv ~ donormale, bmt),
+  donorcmv = survdiff(dfs_surv ~ donorcmv, bmt)
+)
+
+# Extract results from each model
+logrank_results <- lapply(model_list, function(model) 
+  {data.frame(logrank.pval = model$pvalue)}) %>%
+  bind_rows(.id = "Variable") %>% 
+  arrange(logrank.pval)
+
+```
+
+```{r}
+## Univariate proportional hazards models 
+
+# Fit PH models from baseline variables
+model_list <- list(
+  # Initial disease status
+  disgroup = coxph(dfs_surv ~ disgroup, bmt),
+  fab = coxph(dfs_surv ~ fab, bmt),
+  waittime = coxph(dfs_surv ~ waittime, bmt),
+  mtx = coxph(dfs_surv ~ mtx, bmt),
+  hospital = coxph(dfs_surv ~ hospital, bmt),
+  # Patient
+  age = coxph(dfs_surv ~ age, bmt),
+  male = coxph(dfs_surv ~ male, bmt),
+  cmv = coxph(dfs_surv ~ cmv, bmt),
+  # Donor 
+  donorage = coxph(dfs_surv ~ donorage, bmt),
+  donormale = coxph(dfs_surv ~ donormale, bmt),
+  donorcmv = coxph(dfs_surv ~ donorcmv, bmt)
+)
+
+# Extract results from each model
+results <- lapply(model_list, function(model) {
+  tidymodel <- broom::tidy(model, conf.int = TRUE, conf.level = 0.9)
+  
+  data.frame(
+    HR = exp(tidymodel$estimate), 
+    HR.low = exp(tidymodel$conf.low),
+    HR.high = exp(tidymodel$conf.high),
+    logrank.pval = broom::glance(model)$p.value.sc[[1]], # Log-rank test
+    LRT.pval = tidymodel$p.value  # Likelihood ratio test (LRT)
+    )
+  }
+)
+cox_results <- bind_rows(results, .id = "Model")
+
+# Arrange variables by LRT p-value
+cox_results %>% arrange(desc(LRT.pval))
+
+# Variables with LRT p-values above or equal to 10%
+cox_results %>% arrange(LRT.pval) %>% filter(LRT.pval <= 0.1)
+
+# Forest plot of HR estimates
+gg_univar <- ggplot(cox_results, aes(x=HR, y=Model, color=Model)) +
+  geom_point(size = 3) + # Plot hazard ratio points
+  geom_errorbarh(aes(xmin=HR.low, xmax=HR.high), height=0.2) +  # CI bars
+  geom_vline(xintercept=1, linetype="dashed", color="red") +  # Reference line
+  labs(title = "Forest Plot from Univariate Models",
+       x = "Hazard Ratio (HR)",
+       y = "Variable") +
+  theme(legend.position = "bottom")
+
+```
+
+## Directive 4
+
+```{r}
+## Restructing dataframe to including indicators of competing risks and
+## time-varing covariates
+tbmt <- survival::tmerge(
+  data1 = bmt, data2 = bmt, id = id,
+  # Death
+  death = event(ts, deltas),
+  # Relapse
+  relapse = event(tdfs, deltar),
+  # Death or relapse
+  death.relapse = event(tdfs, deltadfs),  
+  # Occurrence of aGVHD
+  post.agvhd = tdc(ta),
+  # Occurrence of platelet recovery
+  post.recovery = tdc(tp)
+  )
+```
+
+
+## Directive 5
+```{r}
+# Subset aGVHD patients
+bmt_agvhd <- filter(bmt, deltaa==1)
+
+# Disease-free survival
+dfs_surv <- with(bmt_agvhd, survival::Surv(tdfs, deltadfs))
+sort(dfs_surv)
+
+```
+
+```{r}
+## Log-rank tests of survival
+
+# Fit KM models from baseline variables
+model_list <- list(
+  # Initial disease status
+  disgroup = survdiff(dfs_surv ~ disgroup, bmt_agvhd),
+  fab = survdiff(dfs_surv ~ fab, bmt_agvhd),
+  waittime = survdiff(dfs_surv ~ waittime, bmt_agvhd),
+  mtx = survdiff(dfs_surv ~ mtx, bmt_agvhd),
+  hospital = survdiff(dfs_surv ~ hospital, bmt_agvhd),
+  # Patient
+  age = survdiff(dfs_surv ~ age, bmt_agvhd),
+  male = survdiff(dfs_surv ~ male, bmt_agvhd),
+  cmv = survdiff(dfs_surv ~ cmv, bmt_agvhd),
+  # Donor 
+  donorage = survdiff(dfs_surv ~ donorage, bmt_agvhd),
+  donormale = survdiff(dfs_surv ~ donormale, bmt_agvhd),
+  donorcmv = survdiff(dfs_surv ~ donorcmv, bmt_agvhd)
+)
+
+# Extract results from each model
+logrank_results <- lapply(model_list, function(model) 
+  {data.frame(logrank.pval = model$pvalue)}) %>%
+  bind_rows(.id = "Variable") %>% 
+  arrange(logrank.pval)
+
+logrank_results %>% 
+  mutate(logrank.pval = ifelse(logrank.pval < 0.001, "<0.001", round(logrank.pval,4)))
+```
+
+
+```{r}
+## Univariate proportional hazards models 
+
+# Fit PH models from baseline variables
+model_list <- list(
+  # Initial disease status
+  disgroup = coxph(dfs_surv ~ disgroup, bmt_agvhd),
+  fab = coxph(dfs_surv ~ fab, bmt_agvhd),
+  waittime = coxph(dfs_surv ~ waittime, bmt_agvhd),
+  mtx = coxph(dfs_surv ~ mtx, bmt_agvhd),
+  hospital = coxph(dfs_surv ~ hospital, bmt_agvhd),
+  # Patient
+  age = coxph(dfs_surv ~ age, bmt_agvhd),
+  male = coxph(dfs_surv ~ male, bmt_agvhd),
+  cmv = coxph(dfs_surv ~ cmv, bmt_agvhd),
+  # Donor 
+  donorage = coxph(dfs_surv ~ donorage, bmt_agvhd),
+  donormale = coxph(dfs_surv ~ donormale, bmt_agvhd),
+  donorcmv = coxph(dfs_surv ~ donorcmv, bmt_agvhd)
+)
+
+# Extract results from each model
+results <- lapply(model_list, function(model) {
+  tidymodel <- broom::tidy(model, conf.int = TRUE, conf.level = 0.9)
+  
+  data.frame(
+    HR = exp(tidymodel$estimate), 
+    HR.low = exp(tidymodel$conf.low),
+    HR.high = exp(tidymodel$conf.high),
+    logrank.pval = broom::glance(model)$p.value.sc[[1]], # Log-rank test
+    LRT.pval = tidymodel$p.value  # Likelihood ratio test (LRT)
+    )
+  }
+)
+cox_results <- bind_rows(results, .id = "Model")
+
+# Forest plot of HR estimates
+ggplot(cox_results, aes(x=HR, y=Model, color=Model)) +
+  geom_point(size = 3) + # Plot hazard ratio points
+  geom_errorbarh(aes(xmin=HR.low, xmax=HR.high), height=0.2) +  # CI bars
+  geom_vline(xintercept=1, linetype="dashed", color="red") +  # Reference line
+  labs(title = "Forest Plot from Univariate Models",
+       x = "Hazard Ratio (HR)",
+       y = "Variable") +
+  theme(legend.position = "bottom")
+
+```
+
+
+```{r}
+## Everything PH model
+
+# Fit a single PH model from baseline variables
+results <- coxph(dfs_surv ~
+        # Initial disease status 
+        disgroup + fab + waittime + mtx + hospital +
+        # Patient
+        age + male + cmv +
+        # Donor 
+        donorage + donormale + donorcmv, 
+      bmt_agvhd) %>%
+  tidy(conf.int = TRUE, conf.level = 0.9)
+
+# Extract results
+cox_results <- results %>% 
+  mutate(Variable = term,
+         HR = exp(estimate),
+         HR.low = exp(conf.low), 
+         HR.high = exp(conf.high),
+         LRT.pval = p.value,
+         .keep="none")
+
+# Forest plot of HR estimates
+ggplot(cox_results, aes(x=HR, y=Variable, color=Variable)) +
+  geom_point(size = 3) + # Plot hazard ratio points
+  geom_errorbarh(aes(xmin=HR.low, xmax=HR.high), height=0.2) +  # CI bars
+  geom_vline(xintercept=1, linetype="dashed", color="red") +  # Reference line
+  labs(title = "Forest Plot from Everything Model",
+       x = "Hazard Ratio (HR)",
+       y = "Variable") +
+  theme(legend.position = "bottom")
+
+```
+
+
+```{r}
+## Everything model stratified by hospital
+
+# Fit a single PH model from baseline variables
+results <- coxph(dfs_surv ~ disgroup + fab + waittime + mtx + strata(hospital) +
+                   age + male + cmv + donorage + donormale + donorcmv, 
+                 bmt_agvhd) %>%
+  tidy(conf.int = TRUE, conf.level = 0.9)
+
+# Extract results
+cox_results <- results %>% 
+  mutate(Variable = term, HR = exp(estimate), HR.low = exp(conf.low),
+         HR.high = exp(conf.high), LRT.pval = p.value, .keep="none")
+
+# Forest plot of HR estimates
+ggplot(cox_results, aes(x=HR, y=Variable, color=Variable)) +
+  geom_point(size = 3) + # Plot hazard ratio points
+  geom_errorbarh(aes(xmin=HR.low, xmax=HR.high), height=0.2) +  # CI bars
+  geom_vline(xintercept=1, linetype="dashed", color="red") +  # Reference line
+  labs(title = "Forest Plot from Everything Model with hospital stratification",
+       x = "Hazard Ratio (HR)",
+       y = "Variable") +
+  theme(legend.position = "bottom")
+
+```
+
+
+
+## Directive 6
+
+```{r}
+agvhd_surv <- with(bmt, Surv(ta, deltaa))
+sort(agvhd_surv)
+```
+```{r}
+# Naive model without confounders
+summary(coxph(agvhd_surv~mtx, bmt))
+
+km_agvhd <- survfit(agvhd_surv ~mtx, data =bmt, conf.type = "log-log")
+
+ggsurvplot(km_agvhd, data = bmt,
+           palette = c("blue", "red"), 
+           legend.title = "Group",
+           legend.labs = c("No methotrexate", "Prophylactic use of methotrexate"),
+           xlab = "Time", 
+           ylab = "Probability of free of aGVHD",
+           ggtheme = theme_minimal())
+```
+
+```{r}
+# create a new variable for female donor for male recipients
+bmt$f2m <- ifelse((bmt$donormale==0 & bmt$male==1), 1, 0)
+
+factor_vars = c('male', 'cmv', 'donormale', 'donorcmv', 'hospital')
+median_vars = c('age', 'donorage', 'waittime')
+
+table_agvhd <- CreateTableOne(data=bmt, vars= c('age', 'male', 'cmv', 'donorage', 'f2m', 'donorcmv', 'waittime', 'hospital'), 
+                              factorVars = factor_vars, strata="mtx")
+print(table_agvhd, nonnormal=median_vars)
+
+# model with selected confounders
+summary(coxph(agvhd_surv ~ mtx + age + male + donorage + cmv + f2m + donorcmv + waittime + hospital, bmt))
+
+```
+
+
+**End of report. Code appendix begins on the next page.**
+
+\pagebreak
+
+## Code Appendix
+
+```{r allcode, ref.label = knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
+
+**End of document.**
