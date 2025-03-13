@@ -57,8 +57,6 @@ km_dfs <- survfit(dfs_surv ~1, conf.type = "log-log")
 plot(km_dfs, main="Kaplan-Meier Curve of Disease-Free Survival",
      xlab = "Days", ylab = "Probability of Disease-Free Survival")
 ```
-Median disease-free survival time is 481 days (95% CI: [363, 748]). 
-
 ```{r}
 # median: 481
 km_dfs
@@ -364,9 +362,10 @@ ggplot(cox_results, aes(x=HR, y=Variable, color=Variable)) +
 agvhd_surv <- with(bmt, Surv(ta, deltaa))
 sort(agvhd_surv)
 ```
+
 ```{r}
 # Naive model without confounders
-summary(coxph(agvhd_surv~mtx, bmt))
+summary(coxph(agvhd_surv~mtx, bmt), conf.int = 0.9)
 
 km_agvhd <- survfit(agvhd_surv ~mtx, data =bmt, conf.type = "log-log")
 
@@ -391,7 +390,7 @@ table_agvhd <- CreateTableOne(data=bmt, vars= c('age', 'male', 'cmv', 'donorage'
 print(table_agvhd, nonnormal=median_vars)
 
 # model with selected confounders
-summary(coxph(agvhd_surv ~ mtx + age + male + donorage + cmv + f2m + donorcmv + waittime + hospital, bmt))
+summary(coxph(agvhd_surv ~ mtx + age + male + donorage + cmv + f2m + donorcmv + waittime + hospital, bmt), conf.int = 0.9)
 
 ```
 
